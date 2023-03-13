@@ -29,6 +29,7 @@ export interface Target {
   [ReactiveFlags.RAW]?: any
 }
 
+//用来缓存Proxy对象的，避免重复创建Proxy对象
 export const reactiveMap = new WeakMap<Target, any>()
 export const shallowReactiveMap = new WeakMap<Target, any>()
 export const readonlyMap = new WeakMap<Target, any>()
@@ -89,6 +90,7 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
 export function reactive(target: object) {
   // if trying to observe a readonly proxy, return the readonly version.
+  //如果当前对象是通过readonly创建的，那么直接返回。
   if (isReadonly(target)) {
     return target
   }
@@ -185,6 +187,7 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>
 ) {
+  //如果不是对象，警告并返回
   if (!isObject(target)) {
     if (__DEV__) {
       console.warn(`value cannot be made reactive: ${String(target)}`)
@@ -193,6 +196,7 @@ function createReactiveObject(
   }
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
+  //如果是proxy对象，除了readonly(reactive(obj))这种情况外，直接返回
   if (
     target[ReactiveFlags.RAW] &&
     !(isReadonly && target[ReactiveFlags.IS_REACTIVE])
@@ -200,19 +204,26 @@ function createReactiveObject(
     return target
   }
   // target already has corresponding Proxy
+  //从缓存中判断是否已经创建过proxy对象，如果已经有了，直接从缓存中和获取。
+  //这里是为了处理这种情况：const arr = reactive([obj]); arr.includes(arr[0]); 防止创建两个关于arr[0]的proxy对象，导致两个对象不一样返回false
   const existingProxy = proxyMap.get(target)
   if (existingProxy) {
     return existingProxy
   }
   // only specific value types can be observed.
   const targetType = getTargetType(target)
+  console.log(targetType)
+  //INVALID的情况：1、被markRaw处理过的对象（带SKIP标记）意味着永远不会转换为 proxy；2、对象不可扩展的（不能添加新的属性）。直接返回对象
   if (targetType === TargetType.INVALID) {
     return target
   }
+  //创建proxy对象
   const proxy = new Proxy(
     target,
+    //区分出map和set系列，采用collectionHandlers处理，Object和Array采用baseHandlers
     targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers
   )
+  //将创建的proxy对象加入缓存
   proxyMap.set(target, proxy)
   return proxy
 }
@@ -225,6 +236,7 @@ export function isReactive(value: unknown): boolean {
 }
 
 export function isReadonly(value: unknown): boolean {
+  //value&&value['__v_isReadonly']
   return !!(value && (value as Target)[ReactiveFlags.IS_READONLY])
 }
 
@@ -237,6 +249,7 @@ export function isProxy(value: unknown): boolean {
 }
 
 export function toRaw<T>(observed: T): T {
+  //observed如果存放着原始对象，就代表是被响应式处理的proxy对象，递归调用返回原始对象；如果没存放原始对象，就是普通对象，那就直接返回。
   const raw = observed && (observed as Target)[ReactiveFlags.RAW]
   return raw ? toRaw(raw) : observed
 }
@@ -244,6 +257,7 @@ export function toRaw<T>(observed: T): T {
 export type Raw<T> = T & { [RawSymbol]?: true }
 
 export function markRaw<T extends object>(value: T): Raw<T> {
+  //对象上添加__v_skip属性，带__v_skip属性的将不会被处理成proxy对象
   def(value, ReactiveFlags.SKIP, true)
   return value
 }

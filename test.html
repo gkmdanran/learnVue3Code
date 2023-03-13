@@ -1,0 +1,292 @@
+<html>
+
+<head></head>
+
+<body>
+</body>
+<script>
+    const data = { foo: 1, }
+
+    const bucket = new WeakMap()
+    let activeEffect
+    const effectStack = []
+    const ITERATE_KEY = Symbol()
+
+    function cleanup(effectFn) {
+        for (let i = 0; i < effectFn.deps.length; i++) {
+            const deps = effectFn.deps[i]
+            deps.delete(effectFn)
+        }
+        effectFn.deps.length = 0
+    }
+
+    function effect(fn, options = {}) {
+        const effectFn = () => {
+            cleanup(effectFn)   //分支切换消除无用的副作用函数
+            activeEffect = effectFn
+            effectStack.push(effectFn) //解决effect嵌套情况
+            const res = fn()
+            effectStack.pop()
+            activeEffect = effectStack[effectStack.length - 1]
+            return res
+        }
+        effectFn.options = options
+        effectFn.deps = []
+        if (!options.lazy) {
+            effectFn()
+        }
+        return effectFn
+    }
+
+    function track(target, key) {
+        if (!activeEffect || !shouldTrack) return target[key]
+        let depsMap = bucket.get(target)
+        if (!depsMap) {
+            bucket.set(target, (depsMap = new Map()))
+        }
+        let deps = depsMap.get(key)
+        if (!deps) {
+            depsMap.set(key, deps = new Set())
+        }
+        deps.add(activeEffect)
+        activeEffect.deps.push(deps)
+    }
+
+    function trigger(target, key, type, newVal) {
+        const depsMap = bucket.get(target)
+        if (!depsMap) return
+        const effects = depsMap.get(key)
+
+
+
+        const effectToRun = new Set()
+        effects && effects.forEach(effectFn => {
+            if (effectFn !== activeEffect) {    //避免无限递归 effect(()=>{obj.foo+=obj.foo+1})
+                effectToRun.add(effectFn)
+            }
+        })
+
+        if (type === 'ADD' || type === 'DELETE') {
+            const iterateEffects = depsMap.get(ITERATE_KEY)
+            iterateEffects && iterateEffects.forEach(effectFn => {
+                if (effectFn !== activeEffect) {
+                    effectToRun.add(effectFn)
+                }
+            })
+        }
+        if (type === 'ADD' && Array.isArray(target)) {
+            const lengthEffects = depsMap.get('length')
+            lengthEffects && lengthEffects.forEach(effectFn => {
+                if (effectFn !== activeEffect) {
+                    effectToRun.add(effectFn)
+                }
+            })
+        }
+        if (Array.isArray(target) && key === 'length') {
+            depsMap.forEach((effects, key) => {
+                if (key >= newVal) {
+                    effects.forEach(effectFn => {
+                        if (effectFn !== activeEffect) {
+                            effectToRun.add(effectFn)
+                        }
+                    })
+                }
+            })
+        }
+
+        effectToRun.forEach(effectFn => {
+            if (effectFn.options.scheduler) {
+                effectFn.options.scheduler(effectFn)
+            } else {
+                effectFn()
+            }
+        })
+    }
+
+
+    function computed(getter) {
+        let value
+        let dirty = true
+        const effectFn = effect(getter, {
+            lazy: true,
+            scheduler() {
+                if (!dirty) {
+                    dirty = true
+                    trigger(obj, 'value')
+                }
+            }
+        })
+        const obj = {
+            get value() {
+                if (dirty) {
+                    value = effectFn()
+                    dirty = false
+                }
+                track(obj, 'value')
+                return value
+            }
+        }
+        return obj
+    }
+
+    function watch(source, cb, options = {}) {
+        let getter
+        if (typeof source === 'function') {
+            getter = source
+        } else {
+            getter = () => traverse(source)
+        }
+        let oldValue, newValue
+        let cleanup
+        function onInvalidate(fn) {
+            cleanup = fn
+        }
+
+
+        const job = () => {
+            newValue = effectFn()
+            if (cleanup) {
+                cleanup()
+            }
+            cb(newValue, oldValue, onInvalidate)
+            oldValue = newValue
+        }
+
+
+        const effectFn = effect(
+            () => getter(),
+            {
+                lazy: true,
+                scheduler: job
+            }
+        )
+        if (options.immediate) {
+            job()
+        } else {
+            oldValue = effectFn()
+        }
+    }
+
+    function traverse(value, seen = new Set()) {
+        if (typeof value !== 'object' || value === null || seen.has(value)) return
+        seen.add(value)
+        for (const k in value) {
+            traverse(value[k], seen)
+        }
+        return value
+    }
+
+    arrayInstrumentations = {}
+    const a = ['includes', 'indexOf', 'lastIndexOf']
+    a.forEach(method => {
+        const originMethod = Array.prototype[method]
+        arrayInstrumentations[method] = function (...args) {
+
+            if (res === false || res === -1) {
+                res = originMethod.apply(this.raw, args)
+            }
+            return res
+        }
+    })
+
+    let shouldTrack = true
+    const b = ['push', 'pop', 'shift', 'unshift', 'splice']
+    b.forEach(method => {
+        const originMethod = Array.prototype[method]
+        arrayInstrumentations[method] = function (...args) {
+            shouldTrack = false
+            let res = originMethod.apply(this, args)
+            shouldTrack = true
+            return res
+        }
+    })
+
+    function createReactive(obj, isShallow = false, isReadonly = false) {
+        return new Proxy(obj, {
+            get(target, key, receiver) {
+                if (key === 'raw') {   //代理对象通过raw来获得原始对象
+                    return target
+                }
+                if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
+                    return Reflect.get(arrayInstrumentations, key, receiver)
+                }
+
+                if (!isReadonly && typeof key !== 'symbol') {
+                    track(target, key)
+                }
+                const res = Reflect.get(target, key, receiver)
+                if (isShallow) {
+                    return res
+                }
+                if (typeof res === 'object' && res !== null) {
+                    return isReadonly ? readonly(res) : reactive(res)
+                }
+                return res
+            },
+            has(target, key) {    //处理in操作符 if(key in obj){}
+                track(target, key)
+                return Reflect.has(target, key)
+            },
+            ownKeys(target) {    //for...in...
+                track(target, Array.isArray(target) ? 'length' : ITERATE_KEY)
+                return Reflect.ownKeys(target)
+            },
+            set(target, key, newVal, receiver) {
+                if (isReadonly) {
+                    console.warn(`属性 ${key} 是只读的`)
+                    return true
+                }
+                const oldVal = target[key]
+                const type = Array.isArray(target) ?
+                    Number(key) < target.length ? 'SET' : 'ADD'
+                    : Object.prototype.hasOwnProperty.call(target, key) ? 'SET' : 'ADD'
+
+                const res = Reflect.set(target, key, newVal, receiver)
+                if (target === receiver.raw) {  //防止响应式子对象继承响应式父对象产生两次set操作
+                    if (oldVal !== newVal && (oldVal === oldVal || newVal === newVal)) {
+                        trigger(target, key, type, newVal)
+                    }
+                }
+                return res
+            },
+            deleteProperty(target, key) {    //delete obj.bar
+                if (isReadonly) {
+                    console.warn(`属性 ${key} 是只读的`)
+                    return true
+                }
+                const hadKey = Object.prototype.hasOwnProperty.call(target, key)
+                const res = Reflect.deleteProperty(target, key)
+                if (res && hadKey) {
+                    trigger(target, key, 'DELETE')
+                }
+            }
+        })
+    }
+
+    const reactiveMap = new Map()
+    function reactive(obj) {
+        const existionProxy = reactiveMap.get(obj)
+        if (existionProxy) return existionProxy
+
+        const proxy = createReactive(obj)
+        reactiveMap.set(obj, proxy)
+        return proxy
+    }
+
+    function shallowReactive(obj) {
+        return createReactive(obj, true)
+    }
+    function readonly(obj) {
+        return createReactive(obj, false, true /* 只读 */)
+    }
+    function shallowReadonly(obj) {
+        return createReactive(obj, true, true /* 只读 */)
+    }
+    const arr = reactive({name:1})
+    effect(() => {
+        console.log(11)
+    })
+    arr.name=2
+</script>
+
+</html>

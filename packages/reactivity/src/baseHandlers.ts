@@ -86,8 +86,11 @@ function createArrayInstrumentations() {
 }
 
 function hasOwnProperty(this: object, key: string) {
+  //转换为原始对象
   const obj = toRaw(this)
+  //track收集依赖
   track(obj, TrackOpTypes.HAS, key)
+  //调用原始对象的hasOwnProperty
   return obj.hasOwnProperty(key)
 }
 
@@ -100,6 +103,7 @@ function createGetter(isReadonly = false, shallow = false) {
     } else if (key === ReactiveFlags.IS_SHALLOW) {
       return shallow
     } else if (
+      //代理对象通过raw来获取原始对象
       key === ReactiveFlags.RAW &&
       receiver ===
         (isReadonly
@@ -118,23 +122,29 @@ function createGetter(isReadonly = false, shallow = false) {
 
     if (!isReadonly) {
       if (targetIsArray && hasOwn(arrayInstrumentations, key)) {
+        //数组的处理，通过arrayInstrumentations重写数组方法
         return Reflect.get(arrayInstrumentations, key, receiver)
       }
       if (key === 'hasOwnProperty') {
+        //hasOwnProperty特殊处理
         return hasOwnProperty
       }
     }
 
     const res = Reflect.get(target, key, receiver)
 
+    //for...of循环过程中，会读取数组的 Symbol.iterator 属性，属性是symbol类型，不需要收集关于这个属性的依赖，因此直接返回值
+    //对于一些特殊的key：__proto__ , __v_isRef , __isVue 也是直接返回值
     if (isSymbol(key) ? builtInSymbols.has(key) : isNonTrackableKeys(key)) {
       return res
     }
 
     if (!isReadonly) {
+      //收集依赖
       track(target, TrackOpTypes.GET, key)
     }
 
+    //shallow为true时不需要再收集依赖了，直接返回值
     if (shallow) {
       return res
     }
@@ -144,6 +154,7 @@ function createGetter(isReadonly = false, shallow = false) {
       return targetIsArray && isIntegerKey(key) ? res : res.value
     }
 
+    //到这一步shallow一定是false，如果是对象就递归处理，实现深层响应式
     if (isObject(res)) {
       // Convert returned value into a proxy as well. we do the isObject check
       // here to avoid invalid value warning. Also need to lazy access readonly
@@ -165,6 +176,7 @@ function createSetter(shallow = false) {
     value: unknown,
     receiver: object
   ): boolean {
+    //获取旧值
     let oldValue = (target as any)[key]
     if (isReadonly(oldValue) && isRef(oldValue) && !isRef(value)) {
       return false
@@ -182,12 +194,14 @@ function createSetter(shallow = false) {
       // in shallow mode, objects are set as-is regardless of reactive or not
     }
 
+    //判断是新增值还是设置值
     const hadKey =
       isArray(target) && isIntegerKey(key)
         ? Number(key) < target.length
         : hasOwn(target, key)
     const result = Reflect.set(target, key, value, receiver)
     // don't trigger if target is something up in the prototype chain of original
+    // 防止响应式子对象继承父对象产生两次set操作
     if (target === toRaw(receiver)) {
       if (!hadKey) {
         trigger(target, TriggerOpTypes.ADD, key, value)
@@ -218,20 +232,29 @@ function has(target: object, key: string | symbol): boolean {
 }
 
 function ownKeys(target: object): (string | symbol)[] {
+  //对象和数组都能通过for...in...循环，如果是数组，就收集length相关的依赖，对象则通过symbol创建一共key来收集依赖
   track(target, TrackOpTypes.ITERATE, isArray(target) ? 'length' : ITERATE_KEY)
   return Reflect.ownKeys(target)
 }
 
+//通过reactive创建的COMMON proxy对象的handlers
 export const mutableHandlers: ProxyHandler<object> = {
+  //读取值时拦截
   get,
+  //设置值时拦截
   set,
+  //拦截delete操作符 delete obj.bar
   deleteProperty,
+  //拦截in操作符 if(key in obj){}
   has,
+  //拦截for...in...
   ownKeys
 }
 
+//通过readonly创建的COMMON proxy对象的handlers
 export const readonlyHandlers: ProxyHandler<object> = {
   get: readonlyGet,
+  //不可重新设置属性值
   set(target, key) {
     if (__DEV__) {
       warn(
@@ -241,6 +264,7 @@ export const readonlyHandlers: ProxyHandler<object> = {
     }
     return true
   },
+  //不可删除属性
   deleteProperty(target, key) {
     if (__DEV__) {
       warn(
@@ -252,6 +276,7 @@ export const readonlyHandlers: ProxyHandler<object> = {
   }
 }
 
+//通过shallowReactive创建的COMMON proxy对象的handlers
 export const shallowReactiveHandlers = /*#__PURE__*/ extend(
   {},
   mutableHandlers,
@@ -264,6 +289,7 @@ export const shallowReactiveHandlers = /*#__PURE__*/ extend(
 // Props handlers are special in the sense that it should not unwrap top-level
 // refs (in order to allow refs to be explicitly passed down), but should
 // retain the reactivity of the normal readonly object.
+//通过shallowReadonly创建的COMMON proxy对象的handlers
 export const shallowReadonlyHandlers = /*#__PURE__*/ extend(
   {},
   readonlyHandlers,
