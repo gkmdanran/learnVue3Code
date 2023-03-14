@@ -59,6 +59,7 @@ function createArrayInstrumentations() {
   ;(['includes', 'indexOf', 'lastIndexOf'] as const).forEach(key => {
     instrumentations[key] = function (this: unknown[], ...args: unknown[]) {
       const arr = toRaw(this) as any
+      //这里使用this.length，this是代理对象，所以'length'也会被收集
       for (let i = 0, l = this.length; i < l; i++) {
         track(arr, TrackOpTypes.GET, i + '')
       }
@@ -76,8 +77,11 @@ function createArrayInstrumentations() {
   // which leads to infinite loops in some cases (#2137)
   ;(['push', 'pop', 'shift', 'unshift', 'splice'] as const).forEach(key => {
     instrumentations[key] = function (this: unknown[], ...args: unknown[]) {
+      //因为这些操作都会修改数组的length，所以需要维护一个全局变量 shouldTrack 来避免和length建立联系
+      //shouldTrack=false
       pauseTracking()
       const res = (toRaw(this) as any)[key].apply(this, args)
+      //shouldTrack=true
       resetTracking()
       return res
     }
@@ -88,7 +92,7 @@ function createArrayInstrumentations() {
 function hasOwnProperty(this: object, key: string) {
   //转换为原始对象
   const obj = toRaw(this)
-  //track收集依赖
+  //因为delete可能会影响hasOwnProperty结果，所以需要track收集依赖
   track(obj, TrackOpTypes.HAS, key)
   //调用原始对象的hasOwnProperty
   return obj.hasOwnProperty(key)
@@ -121,6 +125,7 @@ function createGetter(isReadonly = false, shallow = false) {
     const targetIsArray = isArray(target)
 
     if (!isReadonly) {
+      //readonly=false,才会重写数组方法
       if (targetIsArray && hasOwn(arrayInstrumentations, key)) {
         //数组的处理，通过arrayInstrumentations重写数组方法
         return Reflect.get(arrayInstrumentations, key, receiver)
@@ -140,11 +145,11 @@ function createGetter(isReadonly = false, shallow = false) {
     }
 
     if (!isReadonly) {
-      //收集依赖
+      //只有readonly=false时才会收集依赖，因为readonly不能修改值不会触发响应，所以也就无需收集
       track(target, TrackOpTypes.GET, key)
     }
 
-    //shallow为true时不需要再收集依赖了，直接返回值
+    //第一层已经收集完毕，shallow为true时不需要再对更深层级收集依赖了，直接返回值
     if (shallow) {
       return res
     }
@@ -201,7 +206,8 @@ function createSetter(shallow = false) {
         : hasOwn(target, key)
     const result = Reflect.set(target, key, value, receiver)
     // don't trigger if target is something up in the prototype chain of original
-    // 防止响应式子对象继承父对象产生两次set操作
+    // 子对象的原型是父对象，原型式继承。
+    // 子对象设置值时如果属性不存在，会从原型上去查找，而作为原型的父对象会再次触发set，需要通过这个判断来规避第二次set
     if (target === toRaw(receiver)) {
       if (!hadKey) {
         trigger(target, TriggerOpTypes.ADD, key, value)
@@ -217,12 +223,14 @@ function deleteProperty(target: object, key: string | symbol): boolean {
   const hadKey = hasOwn(target, key)
   const oldValue = (target as any)[key]
   const result = Reflect.deleteProperty(target, key)
+  //删除成功并且删除的属性原来就在对象上
   if (result && hadKey) {
     trigger(target, TriggerOpTypes.DELETE, key, undefined, oldValue)
   }
   return result
 }
 
+//拦截in操作符 if(key in obj){}
 function has(target: object, key: string | symbol): boolean {
   const result = Reflect.has(target, key)
   if (!isSymbol(key) || !builtInSymbols.has(key)) {

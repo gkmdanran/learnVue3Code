@@ -212,7 +212,6 @@ function createReactiveObject(
   }
   // only specific value types can be observed.
   const targetType = getTargetType(target)
-  console.log(targetType)
   //INVALID的情况：1、被markRaw处理过的对象（带SKIP标记）意味着永远不会转换为 proxy；2、对象不可扩展的（不能添加新的属性）。直接返回对象
   if (targetType === TargetType.INVALID) {
     return target

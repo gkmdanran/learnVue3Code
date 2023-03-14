@@ -226,6 +226,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
       ? { effect: activeEffect, target, type, key }
       : undefined
 
+    //dep和effect建立关联
     trackEffects(dep, eventInfo)
   }
 }
@@ -246,7 +247,9 @@ export function trackEffects(
   }
 
   if (shouldTrack) {
+    //dep中添加effect函数
     dep.add(activeEffect!)
+    //effect函数上设置一个deps属性用来保存与dep的关联
     activeEffect!.deps.push(dep)
     if (__DEV__ && activeEffect!.onTrack) {
       activeEffect!.onTrack(
@@ -281,8 +284,10 @@ export function trigger(
     // trigger all effects for target
     deps = [...depsMap.values()]
   } else if (key === 'length' && isArray(target)) {
+    //修改数组的length属性时 arr.length=0
     const newLength = Number(newValue)
     depsMap.forEach((dep, key) => {
+      //索引>=newLength的元素会收到影响，因为会被删除，所以会触发响应
       if (key === 'length' || key >= newLength) {
         deps.push(dep)
       }
@@ -295,24 +300,30 @@ export function trigger(
 
     // also run for iteration key on ADD | DELETE | Map.SET
     switch (type) {
+      //元素添加操作
       case TriggerOpTypes.ADD:
         if (!isArray(target)) {
+          //对象的情况，需要触发for...in...循环，因此需要将ITERATE_KEY对应的dep进行添加
           deps.push(depsMap.get(ITERATE_KEY))
           if (isMap(target)) {
             deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
           }
         } else if (isIntegerKey(key)) {
+          //数组情况，数组长度改变需要触发length对应的deps
           // new index added to array -> length changes
           deps.push(depsMap.get('length'))
         }
         break
+      //元素删除操作
       case TriggerOpTypes.DELETE:
         if (!isArray(target)) {
+          //对象的情况，需要触发for...in...循环，因此需要将ITERATE_KEY对应的dep进行添加
           deps.push(depsMap.get(ITERATE_KEY))
           if (isMap(target)) {
             deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
           }
         }
+        //delete后数组长度不变
         break
       case TriggerOpTypes.SET:
         if (isMap(target)) {
@@ -376,6 +387,7 @@ function triggerEffect(
       effect.onTrigger(extend({ effect }, debuggerEventExtraInfo))
     }
     if (effect.scheduler) {
+      //有调度函数就调用调度函数
       effect.scheduler()
     } else {
       effect.run()

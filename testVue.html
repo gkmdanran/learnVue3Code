@@ -1,14 +1,23 @@
 <html>
-    <head></head>
-    <body>
-        <div id="app"></div>
-    </body>
-    <script src="./packages/reactivity/dist/reactivity.global.js"></script>
-    <script>
-        const {  reactive,readonly,toRaw } = VueReactivity
-        const obj={
-            name:1
-        }
-        const a=toRaw(obj)
-    </script>
+
+<head></head>
+
+<body>
+    <div id="app"></div>
+</body>
+<script src="./packages/reactivity/dist/reactivity.global.js"></script>
+<script>
+    const { reactive, readonly, toRaw, effect } = VueReactivity
+
+
+    const obj = reactive({
+        name: 1
+    })
+    effect(() => {
+        console.log(obj.hasOwnProperty('name'))
+
+    })
+    delete obj.name
+</script>
+
 </html>
