@@ -51,8 +51,10 @@ export const ITERATE_KEY = Symbol(__DEV__ ? 'iterate' : '')
 export const MAP_KEY_ITERATE_KEY = Symbol(__DEV__ ? 'Map key iterate' : '')
 
 export class ReactiveEffect<T = any> {
+  //表示ReactiveEffect实例是否还应该参与正常的依赖收集活动
   active = true
   deps: Dep[] = []
+  //上一个处于活动中的ReactiveEffect实例
   parent: ReactiveEffect | undefined = undefined
 
   /**
@@ -63,6 +65,7 @@ export class ReactiveEffect<T = any> {
   /**
    * @internal
    */
+  //允许递归调用
   allowRecurse?: boolean
   /**
    * @internal
@@ -96,7 +99,9 @@ export class ReactiveEffect<T = any> {
       parent = parent.parent
     }
     try {
+      //parent存放上一个活跃的effect
       this.parent = activeEffect
+      //当前的effect是activeEffect
       activeEffect = this
       shouldTrack = true
 
@@ -107,6 +112,7 @@ export class ReactiveEffect<T = any> {
       } else {
         cleanupEffect(this)
       }
+      //执行fn函数
       return this.fn()
     } finally {
       if (effectTrackDepth <= maxMarkerBits) {
@@ -115,11 +121,13 @@ export class ReactiveEffect<T = any> {
 
       trackOpBit = 1 << --effectTrackDepth
 
+      //执行完以后，activeEffect回到上一个effect
       activeEffect = this.parent
       shouldTrack = lastShouldTrack
       this.parent = undefined
 
       if (this.deferStop) {
+        //执行完之后在执行stop
         this.stop()
       }
     }
@@ -128,10 +136,12 @@ export class ReactiveEffect<T = any> {
   stop() {
     // stopped while running itself - defer the cleanup
     if (activeEffect === this) {
+      //如果当前活跃的effect就是本身，则先做标记，一会再调用stop
       this.deferStop = true
     } else if (this.active) {
       cleanupEffect(this)
       if (this.onStop) {
+        //调用onStop回调
         this.onStop()
       }
       this.active = false
@@ -177,6 +187,7 @@ export function effect<T = any>(
   }
 
   const _effect = new ReactiveEffect(fn)
+  //将options合并到_effect对象中
   if (options) {
     extend(_effect, options)
     if (options.scope) recordEffectScope(_effect, options.scope)
@@ -228,6 +239,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
 
     //dep和effect建立关联
     trackEffects(dep, eventInfo)
+    console.log(targetMap, key)
   }
 }
 
@@ -282,6 +294,7 @@ export function trigger(
   if (type === TriggerOpTypes.CLEAR) {
     // collection being cleared
     // trigger all effects for target
+    //set或map调用clear方法时应当触发它的所有响应
     deps = [...depsMap.values()]
   } else if (key === 'length' && isArray(target)) {
     //修改数组的length属性时 arr.length=0
@@ -304,8 +317,10 @@ export function trigger(
       case TriggerOpTypes.ADD:
         if (!isArray(target)) {
           //对象的情况，需要触发for...in...循环，因此需要将ITERATE_KEY对应的dep进行添加
+          //set或map时，迭代器方法，size，forEach都需要触发
           deps.push(depsMap.get(ITERATE_KEY))
           if (isMap(target)) {
+            //map的迭代器方法keys()涉及到key，所以还需要触发这个
             deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
           }
         } else if (isIntegerKey(key)) {
@@ -318,8 +333,10 @@ export function trigger(
       case TriggerOpTypes.DELETE:
         if (!isArray(target)) {
           //对象的情况，需要触发for...in...循环，因此需要将ITERATE_KEY对应的dep进行添加
+          //set或map时，迭代器方法，size，forEach都需要触发
           deps.push(depsMap.get(ITERATE_KEY))
           if (isMap(target)) {
+            //map的迭代器方法keys()涉及到key，所以还需要触发这个
             deps.push(depsMap.get(MAP_KEY_ITERATE_KEY))
           }
         }
@@ -327,6 +344,7 @@ export function trigger(
         break
       case TriggerOpTypes.SET:
         if (isMap(target)) {
+          //map时，迭代器方法，size，forEach都需要触发
           deps.push(depsMap.get(ITERATE_KEY))
         }
         break

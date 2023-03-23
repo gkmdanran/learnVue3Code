@@ -204,6 +204,9 @@
     function createReactive(obj, isShallow = false, isReadonly = false) {
         return new Proxy(obj, {
             get(target, key, receiver) {
+                if(key==='size'){
+                    return Reflect.get(target, key, target)
+                }
                 if (key === 'raw') {   //代理对象通过raw来获得原始对象
                     return target
                 }

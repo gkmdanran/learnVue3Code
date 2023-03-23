@@ -196,7 +196,7 @@ function createReactiveObject(
   }
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
-  //如果是proxy对象，除了readonly(reactive(obj))这种情况外，直接返回
+  //如果已经是proxy对象，除了readonly(reactive(obj))这种情况外，直接返回
   if (
     target[ReactiveFlags.RAW] &&
     !(isReadonly && target[ReactiveFlags.IS_REACTIVE])
