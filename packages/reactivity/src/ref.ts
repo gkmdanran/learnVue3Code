@@ -47,6 +47,8 @@ export function trackRefValue(ref: RefBase<any>) {
         key: 'value'
       })
     } else {
+      //dep添加activeEffect（这里与reactive不同，reactive的dep是存在targetMap上的，这里直接存放在ref实例上）
+      //建立响应关系
       trackEffects(ref.dep || (ref.dep = createDep()))
     }
   }
@@ -64,6 +66,7 @@ export function triggerRefValue(ref: RefBase<any>, newVal?: any) {
         newValue: newVal
       })
     } else {
+      //触发响应
       triggerEffects(dep)
     }
   }
@@ -71,6 +74,7 @@ export function triggerRefValue(ref: RefBase<any>, newVal?: any) {
 
 export function isRef<T>(r: Ref<T> | unknown): r is Ref<T>
 export function isRef(r: any): r is Ref {
+  //判断值有没有__v_isRef标记来判断值是不是ref创建的
   return !!(r && r.__v_isRef === true)
 }
 
@@ -97,6 +101,7 @@ export function shallowRef(value?: unknown) {
 }
 
 function createRef(rawValue: unknown, shallow: boolean) {
+  //防止被ref重复包裹
   if (isRef(rawValue)) {
     return rawValue
   }
@@ -108,10 +113,13 @@ class RefImpl<T> {
   private _rawValue: T
 
   public dep?: Dep = undefined
+  //ref值的标记
   public readonly __v_isRef = true
 
   constructor(value: T, public readonly __v_isShallow: boolean) {
+    //将值进行备份，如果赋值的是reactive，需要还原
     this._rawValue = __v_isShallow ? value : toRaw(value)
+    //如果值是对象，会被响应式处理，如果不是对象reactive方法会直接返回原值，shallow情况下还是value
     this._value = __v_isShallow ? value : toReactive(value)
   }
 
@@ -121,22 +129,30 @@ class RefImpl<T> {
   }
 
   set value(newVal) {
+    //判断是否是浅层的只读的
     const useDirectValue =
       this.__v_isShallow || isShallow(newVal) || isReadonly(newVal)
+    //因为下面本身就会用reactive处理，如果这里用户传入的就是一个reactive（useDirectValue=false），那需要先还原，再比较新旧值
     newVal = useDirectValue ? newVal : toRaw(newVal)
+    //比较新旧值，判断是否需要触发响应
     if (hasChanged(newVal, this._rawValue)) {
+      //备份值
       this._rawValue = newVal
+      //新值重新通过reactive包裹处理
       this._value = useDirectValue ? newVal : toReactive(newVal)
+      //触发响应
       triggerRefValue(this, newVal)
     }
   }
 }
 
+//手动触发响应的api
 export function triggerRef(ref: Ref) {
   triggerRefValue(ref, __DEV__ ? ref.value : void 0)
 }
 
 export function unref<T>(ref: T | Ref<T>): T {
+  //如果参数为 ref，则返回内部值，否则返回参数本身
   return isRef(ref) ? (ref.value as any) : ref
 }
 
@@ -175,9 +191,11 @@ class CustomRefImpl<T> {
   private readonly _get: ReturnType<CustomRefFactory<T>>['get']
   private readonly _set: ReturnType<CustomRefFactory<T>>['set']
 
+  //ref标记
   public readonly __v_isRef = true
 
   constructor(factory: CustomRefFactory<T>) {
+    //调用factory得到用户自定义的get和set，用户通过track和trigger实现自定义ref
     const { get, set } = factory(
       () => trackRefValue(this),
       () => triggerRefValue(this)
@@ -203,10 +221,13 @@ export type ToRefs<T = any> = {
   [K in keyof T]: ToRef<T[K]>
 }
 export function toRefs<T extends object>(object: T): ToRefs<T> {
+  //对象如果不是通过reactive创建的会报警告
   if (__DEV__ && !isProxy(object)) {
     console.warn(`toRefs() expects a reactive object but received a plain one.`)
   }
+  //判断是否是数组
   const ret: any = isArray(object) ? new Array(object.length) : {}
+  //循环每一项调用toRef
   for (const key in object) {
     ret[key] = toRef(object, key)
   }
@@ -214,6 +235,7 @@ export function toRefs<T extends object>(object: T): ToRefs<T> {
 }
 
 class ObjectRefImpl<T extends object, K extends keyof T> {
+  //ref标记
   public readonly __v_isRef = true
 
   constructor(
@@ -223,7 +245,9 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
   ) {}
 
   get value() {
+    //获取值
     const val = this._object[this._key]
+    //值是undefined就取默认值
     return val === undefined ? (this._defaultValue as T[K]) : val
   }
 
@@ -231,6 +255,7 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
     this._object[this._key] = newVal
   }
 
+  //获取的dep是创建reactive时key对应的dep
   get dep(): Dep | undefined {
     return getDepFromReactive(toRaw(this._object), this._key)
   }
@@ -254,7 +279,9 @@ export function toRef<T extends object, K extends keyof T>(
   key: K,
   defaultValue?: T[K]
 ): ToRef<T[K]> {
+  // 获取值
   const val = object[key]
+  //如果已经是ref值了直接返回
   return isRef(val)
     ? val
     : (new ObjectRefImpl(object, key, defaultValue) as any)

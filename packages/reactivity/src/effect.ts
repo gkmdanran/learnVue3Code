@@ -239,7 +239,6 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
 
     //dep和effect建立关联
     trackEffects(dep, eventInfo)
-    console.log(targetMap, key)
   }
 }
 

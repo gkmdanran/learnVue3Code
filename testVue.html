@@ -7,25 +7,19 @@
 </body>
 <script src="./packages/reactivity/dist/reactivity.global.js"></script>
 <script>
-    const { reactive, readonly, toRaw, effect } = VueReactivity
-    const pMap = (new Map([
-        ['key1', 'value1'],
-        ['key2', 'value2']
-    ]))
-    // const key = { name: 1 }
-    // const pKey = reactive(key)
-
-    
-    
-    // effect(() => {
-    //     console.log(pMap.size)
-    // })
-    // pMap.set('key2','value3')
-
-    const set=new Set([1,2,3])
-    console.log(set.entries().next())
+    const { ref, effect, shallowRef, reactive, readonly, toRef } = VueReactivity
 
 
+    const obj = reactive({
+        foo: 1,
+        bar: 2
+    })
+    const nameref = toRef(obj, 'foo')
+    effect(() => {
+        console.log(nameref.value)
+
+    })
+    nameref.value++
 </script>
 
 </html>
