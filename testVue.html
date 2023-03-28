@@ -7,19 +7,10 @@
 </body>
 <script src="./packages/reactivity/dist/reactivity.global.js"></script>
 <script>
-    const { ref, effect, shallowRef, reactive, readonly, toRef } = VueReactivity
-
-
-    const obj = reactive({
-        foo: 1,
-        bar: 2
-    })
-    const nameref = toRef(obj, 'foo')
-    effect(() => {
-        console.log(nameref.value)
-
-    })
-    nameref.value++
+    const { ref, effect, shallowRef, reactive, readonly, computed } = VueReactivity
+    const count = ref(1)
+    const plusOne = computed(() => count.value + 1)
+    console.log(plusOne.value) // 2
 </script>
 
 </html>

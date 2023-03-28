@@ -61,6 +61,7 @@ export class ReactiveEffect<T = any> {
    * Can be attached after creation
    * @internal
    */
+  //是否是computed的effect
   computed?: ComputedRefImpl<T>
   /**
    * @internal
@@ -87,9 +88,11 @@ export class ReactiveEffect<T = any> {
   }
 
   run() {
+    //active为false直接返回
     if (!this.active) {
       return this.fn()
     }
+    //parent存放
     let parent: ReactiveEffect | undefined = activeEffect
     let lastShouldTrack = shouldTrack
     while (parent) {
@@ -99,9 +102,9 @@ export class ReactiveEffect<T = any> {
       parent = parent.parent
     }
     try {
-      //parent存放上一个活跃的effect
+      //实例上的parent存放上一个活跃的effect
       this.parent = activeEffect
-      //当前的effect是activeEffect
+      //当时这个effect实例成为activeEffect
       activeEffect = this
       shouldTrack = true
 
@@ -110,9 +113,10 @@ export class ReactiveEffect<T = any> {
       if (effectTrackDepth <= maxMarkerBits) {
         initDepMarkers(this)
       } else {
+        //断开副作用函数与响应式数据之间的联系，避免有些数据不在使用了，但联系依然记录着
         cleanupEffect(this)
       }
-      //执行fn函数
+      //执行run最终执行的就是fn函数
       return this.fn()
     } finally {
       if (effectTrackDepth <= maxMarkerBits) {
@@ -121,7 +125,7 @@ export class ReactiveEffect<T = any> {
 
       trackOpBit = 1 << --effectTrackDepth
 
-      //执行完以后，activeEffect回到上一个effect
+      //执行完以后，activeEffect回到之前的effect
       activeEffect = this.parent
       shouldTrack = lastShouldTrack
       this.parent = undefined
@@ -181,7 +185,7 @@ export function effect<T = any>(
   fn: () => T,
   options?: ReactiveEffectOptions
 ): ReactiveEffectRunner {
-  //为了防止传入的fn本身就是effect
+  //如果fn就是effect函数，那就取effect函数上的fn。  effect(effect(()=>{console.log(1)}))
   if ((fn as ReactiveEffectRunner).effect) {
     fn = (fn as ReactiveEffectRunner).effect.fn
   }
@@ -193,9 +197,11 @@ export function effect<T = any>(
     if (options.scope) recordEffectScope(_effect, options.scope)
   }
   if (!options || !options.lazy) {
+    //effect函数最终执行run方法
     _effect.run()
   }
   const runner = _effect.run.bind(_effect) as ReactiveEffectRunner
+  //将effect实例存在runner上并返回
   runner.effect = _effect
   return runner
 }
@@ -399,6 +405,7 @@ function triggerEffect(
   effect: ReactiveEffect,
   debuggerEventExtraInfo?: DebuggerEventExtraInfo
 ) {
+  // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行，防止effect(()=>obj.foo++)既读取值又设置值造成递归。
   if (effect !== activeEffect || effect.allowRecurse) {
     if (__DEV__ && effect.onTrigger) {
       effect.onTrigger(extend({ effect }, debuggerEventExtraInfo))

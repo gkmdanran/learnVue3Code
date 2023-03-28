@@ -77,7 +77,7 @@ function createArrayInstrumentations() {
   // which leads to infinite loops in some cases (#2137)
   ;(['push', 'pop', 'shift', 'unshift', 'splice'] as const).forEach(key => {
     instrumentations[key] = function (this: unknown[], ...args: unknown[]) {
-      //因为这些操作都会修改数组的length，所以需要维护一个全局变量 shouldTrack 来避免和length建立联系
+      //因为这些操作不仅会读取数组的length，还会设置length，为了避免无限递归所以需要维护一个全局变量 shouldTrack 来避免和length建立联系
       //shouldTrack=false
       pauseTracking()
       const res = (toRaw(this) as any)[key].apply(this, args)
