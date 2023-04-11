@@ -30,6 +30,7 @@ declare module '@vue/reactivity' {
   }
 }
 
+//web操作dom的一些方法
 const rendererOptions = /*#__PURE__*/ extend({ patchProp }, nodeOps)
 
 // lazy create the renderer - this makes core renderer logic tree-shakable
@@ -63,6 +64,7 @@ export const hydrate = ((...args) => {
 }) as RootHydrateFunction
 
 export const createApp = ((...args) => {
+  //这里调用的就是baseCreateRenderer()返回的createApp方法
   const app = ensureRenderer().createApp(...args)
 
   if (__DEV__) {
@@ -71,6 +73,7 @@ export const createApp = ((...args) => {
   }
 
   const { mount } = app
+  //重写app方法
   app.mount = (containerOrSelector: Element | ShadowRoot | string): any => {
     const container = normalizeContainer(containerOrSelector)
     if (!container) return
@@ -99,6 +102,7 @@ export const createApp = ((...args) => {
 
     // clear content before mounting
     container.innerHTML = ''
+    //然后再调用原来的mount
     const proxy = mount(container, false, container instanceof SVGElement)
     if (container instanceof Element) {
       container.removeAttribute('v-cloak')

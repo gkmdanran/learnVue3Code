@@ -990,6 +990,7 @@ export function createSetupContext(
 }
 
 export function getExposeProxy(instance: ComponentInternalInstance) {
+  console.log(instance.exposed)
   if (instance.exposed) {
     return (
       instance.exposeProxy ||

@@ -164,7 +164,9 @@ export function createAppContext(): AppContext {
     config: {
       isNativeTag: NO,
       performance: false,
+      //可以存放全局属性
       globalProperties: {},
+      //自定义选项合并策略
       optionMergeStrategies: {},
       errorHandler: undefined,
       warnHandler: undefined,
@@ -201,11 +203,15 @@ export function createAppAPI<HostElement>(
       rootProps = null
     }
 
+    //创建上下文
     const context = createAppContext()
+    //安装的插件集合
     const installedPlugins = new Set()
 
+    //组件挂载标记
     let isMounted = false
 
+    //创建app
     const app: App = (context.app = {
       _uid: uid++,
       _component: rootComponent as ConcreteComponent,
@@ -216,6 +222,7 @@ export function createAppAPI<HostElement>(
 
       version,
 
+      //Vue 应用全局配置的对象
       get config() {
         return context.config
       },
@@ -228,14 +235,20 @@ export function createAppAPI<HostElement>(
         }
       },
 
+      //安装插件
       use(plugin: Plugin, ...options: any[]) {
+        //重复安装抛出警告
         if (installedPlugins.has(plugin)) {
           __DEV__ && warn(`Plugin has already been applied to target app.`)
         } else if (plugin && isFunction(plugin.install)) {
+          //plugin是一个对象并且又install方法
           installedPlugins.add(plugin)
+          //执行install方法
           plugin.install(app, ...options)
         } else if (isFunction(plugin)) {
+          //plugin就是一个方法
           installedPlugins.add(plugin)
+          //执行plugin方法
           plugin(app, ...options)
         } else if (__DEV__) {
           warn(
@@ -296,6 +309,7 @@ export function createAppAPI<HostElement>(
         isHydrate?: boolean,
         isSVG?: boolean
       ): any {
+        //避免重复调用mount方法挂载
         if (!isMounted) {
           // #5571
           if (__DEV__ && (rootContainer as any).__vue_app__) {
@@ -305,6 +319,7 @@ export function createAppAPI<HostElement>(
                 ` you need to unmount the previous app by calling \`app.unmount()\` first.`
             )
           }
+          //将根组件对象rootComponent转化成虚拟Node;
           const vnode = createVNode(
             rootComponent as ConcreteComponent,
             rootProps
@@ -323,9 +338,13 @@ export function createAppAPI<HostElement>(
           if (isHydrate && hydrate) {
             hydrate(vnode as VNode<Node, Element>, rootContainer as any)
           } else {
+            //调用render函数，将这个虚拟Node转化成真实Node并挂载到rootContainer所指向的元素上
+            //render就是baseCreateRenderer内部声明的render
             render(vnode, rootContainer, isSVG)
           }
+          //挂载标记为true
           isMounted = true
+          //保留原容器
           app._container = rootContainer
           // for devtools and telemetry
           ;(rootContainer as any).__vue_app__ = app
@@ -335,6 +354,7 @@ export function createAppAPI<HostElement>(
             devtoolsInitApp(app, version)
           }
 
+          //调用getExposeProxy函数得到一个代理对象并返回
           return getExposeProxy(vnode.component!) || vnode.component!.proxy
         } else if (__DEV__) {
           warn(

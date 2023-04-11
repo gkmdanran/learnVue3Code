@@ -6,11 +6,36 @@
     <div id="app"></div>
 </body>
 <script src="./packages/reactivity/dist/reactivity.global.js"></script>
+<script src="./packages/runtime-dom/dist/runtime-dom.global.js"></script>
 <script>
-    const { ref, effect, shallowRef, reactive, readonly, computed } = VueReactivity
-    const count = ref(1)
-    const plusOne = computed(() => count.value + 1)
-    console.log(plusOne.value) // 2
-</script>
+    const { createApp, h, reactive } = VueRuntimeDOM
 
+    function pluginTest(){
+        console.log('pluginTest')
+    }
+
+
+    const RootComponent = {
+        setup(props, context){
+            let relativeData = reactive({
+                name:'杨艺韬',
+                age: 60
+            })
+            let agePlus = ()=>{
+                relativeData.age++
+            }
+            return {relativeData, agePlus}
+        },
+        render(proxy){
+            return h('div', {
+                onClick: proxy.agePlus,
+                innerHTML:`${proxy.relativeData.name}已经${proxy.relativeData.age}岁了，点击这里继续增加年龄`
+            } )
+        }
+    }
+    const app=createApp(RootComponent)
+    app.use(pluginTest)
+    app.mount("#app")
+    app.mount("#app")
+ </script>
 </html>

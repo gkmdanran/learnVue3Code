@@ -157,9 +157,11 @@ export function unref<T>(ref: T | Ref<T>): T {
 }
 
 const shallowUnwrapHandlers: ProxyHandler<any> = {
+  //ref直接返回它的value
   get: (target, key, receiver) => unref(Reflect.get(target, key, receiver)),
   set: (target, key, value, receiver) => {
     const oldValue = target[key]
+    //设置值
     if (isRef(oldValue) && !isRef(value)) {
       oldValue.value = value
       return true
@@ -169,9 +171,11 @@ const shallowUnwrapHandlers: ProxyHandler<any> = {
   }
 }
 
+//经过setup处理后在template不再需要.value获取值
 export function proxyRefs<T extends object>(
   objectWithRefs: T
 ): ShallowUnwrapRef<T> {
+  //如果值是reactive直接返回，否则创建一个新的代理对象
   return isReactive(objectWithRefs)
     ? objectWithRefs
     : new Proxy(objectWithRefs, shallowUnwrapHandlers)

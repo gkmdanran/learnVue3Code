@@ -355,7 +355,9 @@ function baseCreateRenderer(
   // Note: functions inside this closure should use `const xxx = () => {}`
   // style in order to prevent being inlined by minifiers.
   const patch: PatchFn = (
+    //旧vnode
     n1,
+    //新vnode
     n2,
     container,
     anchor = null,
@@ -365,13 +367,16 @@ function baseCreateRenderer(
     slotScopeIds = null,
     optimized = __DEV__ && isHmrUpdating ? false : !!n2.dynamicChildren
   ) => {
+    //如果新旧vnode相同则不会更新
     if (n1 === n2) {
       return
     }
 
     // patching & not same type, unmount old tree
+    // 旧虚拟dom存在并且类型不一样
     if (n1 && !isSameVNodeType(n1, n2)) {
       anchor = getNextHostNode(n1)
+      //卸载旧虚拟dom
       unmount(n1, parentComponent, parentSuspense, true)
       n1 = null
     }
@@ -384,6 +389,7 @@ function baseCreateRenderer(
     const { type, ref, shapeFlag } = n2
     switch (type) {
       case Text:
+        //处理文本节点
         processText(n1, n2, container, anchor)
         break
       case Comment:
@@ -2317,10 +2323,13 @@ function baseCreateRenderer(
 
   const render: RootRenderFunction = (vnode, container, isSVG) => {
     if (vnode == null) {
+      //判断container对应的元素曾经是否渲染过其他虚拟Node
       if (container._vnode) {
+        //卸载该虚拟Node对应的节点
         unmount(container._vnode, null, null, true)
       }
     } else {
+      //新旧vnode进行patch更新
       patch(container._vnode || null, vnode, container, null, null, null, isSVG)
     }
     flushPreFlushCbs()
